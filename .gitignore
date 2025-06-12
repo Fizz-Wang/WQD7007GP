@@ -1,0 +1,13 @@
+# Python 缓存文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Pyenv 虚拟环境
+.python-version
+pyspark_env/
+
+# IDE/编辑器 配置文件
+.idea/
+.vscode/
