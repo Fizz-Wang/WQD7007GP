@@ -92,6 +92,7 @@
 2. **设置你的Git用户名和邮箱**: (请确保这与你自己的GitHub账户一致)
 
    ```
+   git init
    git config user.name "Your Name"
    git config user.email "your.email@example.com"
    ```
