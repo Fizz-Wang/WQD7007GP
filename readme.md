@@ -83,16 +83,43 @@
 
 成功登录服务器后，我们将遵循一套包含**身份配置、分支管理和合并请求 (Pull Request)** 的专业Git流程。
 
-##### **3.2.1 首次Git配置 (每个成员仅需一次)**
 
-虽然我们都使用`fizz`用户登录服务器，但为了在GitHub上明确区分每个人的代码贡献，**每个人都必须在自己克隆的仓库里，配置自己的Git身份**。
+##### **3.2.1 克隆你自己的工作区 (每个成员仅需一次)**
 
-1. **进入你自己的工作区**: `cd /home/fizz/WQD7007GP/<你的文件夹名>` (例如: `cd /home/fizz/WQD7007GP/Runcheng`)
+这是建立你个人开发环境的**第一步也是最关键的一步**。
 
-2. **设置你的Git用户名和邮箱**: (请确保这与你自己的GitHub账户一致)
+1. **创建并进入总工作区**:
 
    ```
-   git init
+   mkdir -p /home/fizz/WQD7007GP
+   cd /home/fizz/WQD7007GP
+   ```
+
+2. **克隆中央仓库到你的个人文件夹**: 使用`git clone`命令。这个命令会自动为你创建一个文件夹，下载所有代码，并设置好与远程仓库的连接。
+
+   ```
+   # 将<你的文件夹名>替换为你自己的名字或小组名，例如 "Runcheng" 或 "GroupB"
+   git clone https://github.com/Fizz-Wang/WQD7007GP.git <你的文件夹名>
+   ```
+
+   **示例**:
+
+   ```
+   git clone https://github.com/Fizz-Wang/WQD7007GP.git Runcheng
+   ```
+
+##### **3.2.2 首次Git配置 (在你的个人工作区内完成)**
+
+1. **进入你刚刚克隆好的工作区**:
+
+   ```
+   cd <你的文件夹名> 
+   # 例如: cd Runcheng
+   ```
+
+2. **设置你的Git用户名和邮箱** (请确保这与你自己的GitHub账户一致):
+
+   ```
    git config user.name "Your Name"
    git config user.email "your.email@example.com"
    ```
