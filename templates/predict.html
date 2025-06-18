@@ -1,0 +1,81 @@
+{% extends "layout.html" %}
+{% block title %}Prediction Workbench{% endblock %}
+{% block content %}
+<style>
+    .form-container { display: flex; gap: 30px; }
+    .form-column { flex: 1; }
+    .form-group { margin-bottom: 1.5rem; }
+    label { display: block; font-weight: 600; margin-bottom: 0.5rem; }
+    select, textarea { width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #ced4da; font-size: 1rem; box-sizing: border-box; }
+    textarea { height: 200px; resize: vertical; }
+    button { padding: 12px 24px; font-size: 1rem; cursor: pointer; border: none; background-color: #52c41a; color: white; border-radius: 5px; transition: all 0.3s; }
+    button:hover { background-color: #73d13d; }
+    #prediction-result { margin-top: 1.5rem; padding: 20px; background-color: #fafafa; border: 1px dashed #d9d9d9; border-radius: 5px; display: none; }
+    #result-output { white-space: pre-wrap; word-wrap: break-word; }
+</style>
+<h1>Prediction Workbench</h1>
+<p>Select a trained model and input new data to perform a prediction.</p>
+{% if error %}
+    <p class="error">Error: {{ error }}</p>
+{% else %}
+    <div class="form-container">
+        <div class="form-column">
+            <form id="prediction-form">
+                <div class="form-group">
+                    <label for="model-select">Select Model:</label>
+                    <select id="model-select" name="model">
+                        {% for model in models %}
+                            <option value="{{ model }}">{{ model.split('/')[-1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="review-text">Enter Hotel Review Text:</label>
+                    <textarea id="review-text" name="text" placeholder="e.g., The service at this hotel was excellent, and the rooms were very clean..."></textarea>
+                </div>
+                <button type="submit">Perform Prediction</button>
+            </form>
+        </div>
+        <div class="form-column">
+            <div id="prediction-result">
+                <h3>Prediction Result:</h3>
+                <pre id="result-output"></pre>
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+<script>
+    document.getElementById('prediction-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const model = document.getElementById('model-select').value;
+        const text = document.getElementById('review-text').value;
+        const resultDiv = document.getElementById('prediction-result');
+        const resultOutput = document.getElementById('result-output');
+
+        resultOutput.textContent = 'Submitting prediction task...';
+        resultDiv.style.display = 'block';
+
+        fetch('/perform-prediction', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ model: model, text: text }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                resultOutput.textContent = 'Error: ' + data.error + '\\n' + data.details;
+            } else {
+                // Format the JSON output for better readability
+                resultOutput.textContent = JSON.stringify(data.prediction, null, 2);
+            }
+        })
+        .catch(error => {
+            resultOutput.textContent = 'Request failed: ' + error;
+        });
+    });
+</script>
+{% endblock %}
+

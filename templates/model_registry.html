@@ -1,0 +1,125 @@
+{% extends "layout.html" %}
+{% block title %}Model Comparison Workbench{% endblock %}
+{% block content %}
+<style>
+    .workbench-header {
+        border-bottom: 1px solid #e8e8e8;
+        padding-bottom: 20px;
+        margin-bottom: 30px;
+    }
+    .filters {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        background-color: #fafafa;
+        padding: 20px;
+        border-radius: 8px;
+    }
+    .filters .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+    .filters label {
+        font-size: 0.9rem;
+        font-weight: 500;
+        margin-bottom: 5px;
+        color: #555;
+    }
+    .filters select, .filters button {
+        padding: 8px 12px;
+        border-radius: 5px;
+        border: 1px solid #d9d9d9;
+        font-size: 1rem;
+    }
+    .filters button {
+        cursor: pointer;
+        background-color: #1890ff;
+        color: white;
+        border-color: #1890ff;
+        align-self: flex-end;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+    th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #dee2e6; word-wrap: break-word; }
+    th { background-color: #fafafa; font-weight: 600; }
+    th a { color: #333; text-decoration: none; }
+    th a:hover { color: #1890ff; }
+    .code { background-color: #f0f2f5; padding: 3px 6px; border-radius: 4px; font-family: "SFMono-Regular", Consolas, 'Liberation Mono', Menlo, Courier, monospace; }
+    .error { color: #f5222d; font-weight: bold; }
+    .success { color: #52c41a; font-weight: bold; }
+</style>
+
+<div class="workbench-header">
+    <h1>Model Comparison Workbench</h1>
+    <p>Filter, sort, and analyze all model experiments registered in the HBase 'model_registry' table.</p>
+</div>
+
+<!-- Filter and Sort Controls -->
+<form method="get" action="/model-registry" class="filters">
+    <div class="form-group">
+        <label for="task-filter">Filter by Task:</label>
+        <select name="task" id="task-filter">
+            <option value="">All Tasks</option>
+            {% for task in unique_tasks %}
+            <option value="{{ task }}" {{ 'selected' if current_filters.task == task }}>{{ task }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="model-filter">Filter by Model:</label>
+        <select name="model" id="model-filter">
+            <option value="">All Models</option>
+            {% for model in unique_models %}
+            <option value="{{ model }}" {{ 'selected' if current_filters.model == model }}>{{ model }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit">Apply Filters</button>
+</form>
+
+{% if error %}
+    <p class="error" style="margin-top: 20px;">Error: {{ error }}</p>
+{% else %}
+    <p class="success" style="margin-top: 20px;">Displaying {{ data|length }} matching experiment records.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>
+                    <a href="{{ request.path }}?task={{ current_filters.task or '' }}&model={{ current_filters.model or '' }}&sort=info:run_timestamp&order={{ 'asc' if current_sort.by == 'info:run_timestamp' and current_sort.order == 'desc' else 'desc' }}">
+                        Timestamp <span>&#8597;</span>
+                    </a>
+                </th>
+                <th>Task / Model</th>
+                <th>Parameters</th>
+                <th>
+                     <a href="{{ request.path }}?task={{ current_filters.task or '' }}&model={{ current_filters.model or '' }}&sort=metrics:evaluation_score&order={{ 'asc' if current_sort.by == 'metrics:evaluation_score' and current_sort.order == 'desc' else 'desc' }}">
+                        Score <span>&#8597;</span>
+                    </a> 
+                    {# CORRECTED LINE: Access the score_type from the first item in the data list #}
+                    {% if data %}
+                        ({{ data[0]['metrics:score_type'] }})
+                    {% endif %}
+                </th>
+                <th>
+                     <a href="{{ request.path }}?task={{ current_filters.task or '' }}&model={{ current_filters.model or '' }}&sort=metrics:training_time_seconds&order={{ 'asc' if current_sort.by == 'metrics:training_time_seconds' and current_sort.order == 'desc' else 'desc' }}">
+                        Time (s) <span>&#8597;</span>
+                    </a>
+                </th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in data %}
+            <tr>
+                <td>{{ item['info:run_timestamp'] }}</td>
+                <td>{{ item['info:task_name'] }} <br><b>{{ item['info:model_name'] }}</b></td>
+                <td><span class="code">{{ item['metrics:parameters_json'] }}</span></td>
+                <td><b>{{ item['metrics:evaluation_score'] }}</b></td>
+                <td>{{ item['metrics:training_time_seconds'] }}</td>
+                <td><a href="/experiment/{{ item.row_key }}">View Visuals</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endif %}
+{% endblock %}
+

@@ -1,0 +1,61 @@
+{% extends "layout.html" %}
+{% block title %}Task Console{% endblock %}
+{% block content %}
+<style>
+    h1 { color: #333; }
+    p { color: #555; margin-bottom: 25px; }
+    .task-buttons { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 25px; }
+    .task-buttons button { padding: 12px 24px; font-size: 1rem; font-weight: 500; cursor: pointer; border: none; background-color: #1890ff; color: white; border-radius: 5px; transition: all 0.3s; }
+    .task-buttons button:hover { background-color: #40a9ff; }
+    .task-buttons button:disabled { background-color: #b0b0b0; cursor: not-allowed; }
+    #status-message { padding: 15px; background-color: #e6f7ff; border: 1px solid #91d5ff; border-radius: 5px; display: none; margin-top: 20px; font-size: 0.9rem; }
+    .code { background-color: #d9d9d9; padding: 3px 6px; border-radius: 4px; font-family: "SFMono-Regular", Consolas, 'Liberation Mono', Menlo, Courier, monospace; }
+</style>
+<h1>Task Console</h1>
+<p>Please select an analysis task to run. The Spark job will run in the background. You can monitor the progress via SSH.</p>
+<div class="task-buttons">
+    <button onclick="runTask(1)">Run Task A (Clustering)</button>
+    <button onclick="runTask(2)">Run Task B (Classification)</button>
+    <button onclick="runTask(3)">Run Task C (Sentiment Analysis)</button>
+    <button onclick="runTask(4)">Run Task D (Anomaly Detection)</button>
+</div>
+<div id="status-message"></div>
+
+<script>
+    function runTask(taskId) {
+        const statusDiv = document.getElementById('status-message');
+        const buttons = document.querySelectorAll('.task-buttons button');
+        
+        statusDiv.style.display = 'block';
+        statusDiv.style.borderColor = '#91d5ff';
+        statusDiv.style.backgroundColor = '#e6f7ff';
+        statusDiv.innerHTML = 'Sending request to start Task ' + taskId + '...';
+        buttons.forEach(btn => btn.disabled = true);
+
+        // Send a POST request to trigger the background task
+        fetch('/run-task/' + taskId, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    statusDiv.innerHTML = `<strong>Success!</strong> ${data.message} <br>To monitor the log, please run this command in your SSH terminal: <br><span class="code">${data.log_command}</span>`;
+                } else {
+                    statusDiv.style.borderColor = '#ffccc7';
+                    statusDiv.style.backgroundColor = '#fff1f0';
+                    statusDiv.innerHTML = `<strong>Error:</strong> Failed to start the task.`;
+                }
+            })
+            .catch(error => {
+                statusDiv.style.borderColor = '#ffccc7';
+                statusDiv.style.backgroundColor = '#fff1f0';
+                statusDiv.innerHTML = `<strong>Request Error:</strong> Could not contact the server. Details: ${error}`;
+            })
+            .finally(() => {
+                // Re-enable buttons after a short delay
+                setTimeout(() => {
+                    buttons.forEach(btn => btn.disabled = false);
+                }, 2000);
+            });
+    }
+</script>
+{% endblock %}
+

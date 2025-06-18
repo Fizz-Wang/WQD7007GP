@@ -1,174 +1,188 @@
-from utils.spark_session import get_spark_session
+# tasks/task_b_classification.py
+
+# Import all necessary generic and specific libraries
 import time
+import json
 from datetime import datetime
 import calendar
 
+# Import PySpark functions and classes
 from pyspark.sql.functions import col, udf, when, regexp_extract
 from pyspark.sql.types import IntegerType
+from pyspark.ml import Pipeline, PipelineModel
 from pyspark.ml.feature import StringIndexer, VectorAssembler
+
+# Import classification models to be compared
 from pyspark.ml.classification import DecisionTreeClassifier, NaiveBayes
-from pyspark.ml import Pipeline
+
+# Import evaluators for classification tasks
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
 
+# Import our utility modules
+from utils.spark_session import get_spark_session
 from utils.hbase_connector import get_hbase_connection
 
+# Define UDF for date conversion
 def month_str_to_int(s):
-    """
-    Converts month name in strings like 'December 2012' to integer 1-12.
-    """
+    """Converts month name in strings like 'December 2012' to integer 1-12."""
     try:
         mon = s.split()[0]
         return list(calendar.month_name).index(mon)
     except Exception:
         return None
 
-# Register UDF
 udf_month = udf(month_str_to_int, IntegerType())
 
 def run_task_b():
-    """Executes Task B: Room Experience Classification."""
     """
-    Executes Task B: Room Experience Classification.
-    Steps:
-      1. Load raw data from Hive
-      2. Compute quantile-based bins for rooms_rating
-      3. Balance classes via oversampling
-      4. Extract date features
-      5. Train Decision Tree and Naive Bayes, evaluate macro F1
-      6. Persist models to HDFS
-      7. Write metadata to HBase
+    Executes Task B: Compares Decision Tree and Naive Bayes for room experience
+    classification, saves the models, and records rich metrics to HBase.
     """
-
+    # 1. Initialization
+    # =================
     spark = get_spark_session("Task B - Room Experience Classification")
-    print("Task B: Classification started.")
-    # 1. Load raw data
-    df = spark.sql(
-        """
-        SELECT
-          CAST(ratings['service'] AS DOUBLE)       AS service_rating,
-          CAST(ratings['cleanliness'] AS DOUBLE)   AS cleanliness_rating,
-          CAST(ratings['overall'] AS DOUBLE)       AS overall_rating,
-          CAST(ratings['value'] AS DOUBLE)         AS value_rating,
-          CAST(ratings['location'] AS DOUBLE)      AS location_rating,
-          CAST(ratings['sleep_quality'] AS DOUBLE) AS sleep_quality_rating,
-          CAST(ratings['rooms'] AS DOUBLE)         AS rooms_rating,
-          date_stayed,
-          id                                      AS review_id
-        FROM reviews
-        WHERE ratings['rooms'] IS NOT NULL
-        """
-    )
-    total = df.count()
-    print(f"Loaded {total} records from Hive.")
-
-    # 2. Compute quantiles for binning
-    p33, p66 = df.approxQuantile("rooms_rating", [0.3333, 0.6666], 0.01)
-    print(f"Quantile thresholds -> 33%: {p33:.4f}, 66%: {p66:.4f}")
-
-    # 2.1 Assign labels based on quantiles
-    df_labeled = df.withColumn(
-        "rooms_label",
-        when(col("rooms_rating") <= p33, "Low")
-        .when(col("rooms_rating") <= p66, "Medium")
-        .otherwise("High")
-    )
-    print("Class distribution before balancing:")
-    df_labeled.groupBy("rooms_label").count().show()
-
-    # 3. Balance classes via oversampling
-    counts = df_labeled.groupBy("rooms_label").count().collect()
-    max_count = max(r['count'] for r in counts)
-    df_balanced = None
-    for row in counts:
-        label = row['rooms_label']
-        cnt = row['count']
-        ratio = max_count / cnt
-        sampled = df_labeled.filter(col("rooms_label") == label).sample(True, ratio, seed=42)
-        sampled_count = sampled.count()
-        print(f"Oversampled label={label}: target={max_count}, got={sampled_count}, ratio={ratio:.2f}")
-        df_balanced = sampled if df_balanced is None else df_balanced.union(sampled)
-
-    print("Class distribution after balancing:")
-    df_balanced.groupBy("rooms_label").count().show()
-
-    # 4. Date feature extraction
-    df_feat = df_balanced.withColumn("month", udf_month(col("date_stayed"))) \
-                         .withColumn("year", regexp_extract(col("date_stayed"), r"(\d{4})", 1).cast(IntegerType()))
-    df_feat = df_feat.filter(col("month").isNotNull() & col("year").isNotNull())
-    feature_cols = [
-    "service_rating", "cleanliness_rating", "overall_rating",
-    "value_rating", "location_rating", "sleep_quality_rating",
-    "month", "year"]
-    df_feat = df_feat.na.drop(subset=feature_cols)
-    print(f"Records after date parsing: {df_feat.count()}")
-
-    # 5. Prepare pipeline and split data
-    indexer = StringIndexer(inputCol="rooms_label", outputCol="label").fit(df_feat)
+    print("Task B: Classification and Registration started.")
     
-    assembler = VectorAssembler(inputCols=feature_cols, outputCol="features", handleInvalid="skip")
-    dt = DecisionTreeClassifier(labelCol="label", featuresCol="features", maxDepth=5)
-    nb = NaiveBayes(labelCol="label", featuresCol="features", smoothing=1.0)
+    try:
+        # 2. Data Loading and Feature Engineering
+        # =========================================
+        print("Loading data and preparing for classification...")
+        df = spark.sql("""
+            SELECT 
+                id as review_id,
+                CAST(ratings['service'] AS DOUBLE) AS service_rating,
+                CAST(ratings['cleanliness'] AS DOUBLE) AS cleanliness_rating,
+                CAST(ratings['overall'] AS DOUBLE) AS overall_rating,
+                CAST(ratings['value'] AS DOUBLE) AS value_rating,
+                CAST(ratings['location'] AS DOUBLE) AS location_rating,
+                CAST(ratings['sleep_quality'] AS DOUBLE) AS sleep_quality_rating,
+                CAST(ratings['rooms'] AS DOUBLE) AS rooms_rating,
+                date_stayed
+            FROM reviews WHERE ratings['rooms'] IS NOT NULL
+        """)
+        
+        # --- Binning and Balancing (as per the original script) ---
+        p33, p66 = df.approxQuantile("rooms_rating", [0.3333, 0.6666], 0.01)
+        df_labeled = df.withColumn("rooms_label", when(col("rooms_rating") <= p33, "Low").when(col("rooms_rating") <= p66, "Medium").otherwise("High"))
+        
+        counts = df_labeled.groupBy("rooms_label").count().collect()
+        max_count = max(r['count'] for r in counts)
+        df_balanced = None
+        for row in counts:
+            ratio = max_count / row['count']
+            # --- CORRECTED LINE ---
+            # Changed row['label'] to the correct column name row['rooms_label']
+            sampled = df_labeled.filter(col("rooms_label") == row['rooms_label']).sample(withReplacement=True, fraction=ratio, seed=42)
+            df_balanced = sampled if df_balanced is None else df_balanced.union(sampled)
+            
+        # --- Final Feature Preparation ---
+        df_feat = df_balanced.withColumn("month", udf_month(col("date_stayed"))) \
+                             .withColumn("year", regexp_extract(col("date_stayed"), r"(\d{4})", 1).cast(IntegerType()))
+        
+        feature_cols = ["service_rating", "cleanliness_rating", "overall_rating", "value_rating", "location_rating", "sleep_quality_rating", "month", "year"]
+        df_feat = df_feat.na.drop(subset=feature_cols + ["rooms_label"])
+        df_feat.cache()
 
-    train_df, test_df = df_feat.randomSplit([0.8, 0.2], seed=42)
-    print(f"Train count={train_df.count()}, Test count={test_df.count()}")
+        # Split data into training and test sets
+        (trainingData, testData) = df_feat.randomSplit([0.8, 0.2], seed=42)
+        
+        # Prepare pipeline stages that are common to both models
+        indexer = StringIndexer(inputCol="rooms_label", outputCol="label").fit(df_feat)
+        assembler = VectorAssembler(inputCols=feature_cols, outputCol="features", handleInvalid="skip")
 
-    # 6. Train models
-    start_dt = time.time()
-    pipeline_dt = Pipeline(stages=[indexer, assembler, dt])
-    model_dt = pipeline_dt.fit(train_df)
-    dt_time = time.time() - start_dt
+        model_metadata_list = []
 
-    start_nb = time.time()
-    pipeline_nb = Pipeline(stages=[indexer, assembler, nb])
-    model_nb = pipeline_nb.fit(train_df)
-    nb_time = time.time() - start_nb
+        # --- Reusable Model Experiment Function ---
+        def run_experiment(model_estimator, model_name, model_params):
+            print(f"\n--- Processing {model_name} Model Experiment ---")
+            
+            # 3. Model Training & Evaluation
+            # ===============================
+            pipeline = Pipeline(stages=[indexer, assembler, model_estimator])
+            
+            start_time = time.time()
+            model = pipeline.fit(trainingData)
+            training_time = time.time() - start_time
+            
+            predictions = model.transform(testData)
+            
+            # --- Rich Metrics Calculation ---
+            # Primary metric: Macro-averaged F1-score
+            evaluator_f1 = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName="f1")
+            f1_score = evaluator_f1.evaluate(predictions)
 
-    # 7. Evaluate
-    pred_dt = model_dt.transform(test_df)
-    pred_nb = model_nb.transform(test_df)
-    evaluator = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName="f1")
-    f1_dt = evaluator.evaluate(pred_dt)
-    f1_nb = evaluator.evaluate(pred_nb)
-    print(f"DecisionTree F1={f1_dt:.4f}, time={dt_time:.2f}s")
-    print(f"NaiveBayes   F1={f1_nb:.4f}, time={nb_time:.2f}s")
+            # Detailed metrics: Precision, Recall, and Confusion Matrix
+            evaluator_pr = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction")
+            precision = evaluator_pr.evaluate(predictions, {evaluator_pr.metricName: "weightedPrecision"})
+            recall = evaluator_pr.evaluate(predictions, {evaluator_pr.metricName: "weightedRecall"})
+            
+            # Confusion Matrix
+            confusion_matrix_df = predictions.groupBy("label", "prediction").count()
+            confusion_matrix_list = [row.asDict() for row in confusion_matrix_df.collect()]
+            
+            detailed_metrics_dict = {
+                "f1_score_macro": round(f1_score, 4),
+                "precision_weighted": round(precision, 4),
+                "recall_weighted": round(recall, 4),
+                "confusion_matrix": confusion_matrix_list
+            }
+            detailed_metrics_json = json.dumps(detailed_metrics_dict)
+            
+            # 4. Model & Metadata Persistence
+            # ================================
+            timestamp_str = datetime.now().strftime("%Y%m%d%H%M%S")
+            model_path = f"hdfs://localhost:9000/user/fizz/models/{model_name.lower()}_{timestamp_str}"
+            
+            print(f"Saving {model_name} model to: {model_path}")
+            model.save(model_path)
+            
+            # Prepare structured metadata dictionary
+            model_metadata = {
+                'row_key': f'task_b_{model_name.lower()}_{timestamp_str}',
+                'info:task_name': 'Task B - Room Experience Classification',
+                'info:model_name': model_name,
+                'info:run_timestamp': timestamp_str,
+                'metrics:training_time_seconds': str(round(training_time, 2)),
+                'metrics:evaluation_score': str(round(f1_score, 4)),
+                'metrics:score_type': 'Macro F1-Score',
+                'metrics:parameters_json': json.dumps(model_params),
+                'artifact:model_hdfs_path': model_path,
+                'details:rich_metrics_json': detailed_metrics_json
+            }
+            model_metadata_list.append(model_metadata)
+            print(f"{model_name} - F1 Score: {f1_score:.4f}, Training Time: {training_time:.2f}s")
 
-    # 8. Save models
-    ts = datetime.now().strftime("%Y%m%d%H%M%S")
-    dt_path = f"hdfs://localhost:9000/user/fizz/models/decision_tree_{ts}"
-    nb_path = f"hdfs://localhost:9000/user/fizz/models/naive_bayes_{ts}"
-    model_dt.write().overwrite().save(dt_path)
-    model_nb.write().overwrite().save(nb_path)
-    print(f"Saved models to {dt_path} and {nb_path}")
+        # --- Run experiments for both models ---
+        dt_params = {"maxDepth": 5}
+        run_experiment(DecisionTreeClassifier(labelCol="label", featuresCol="features", **dt_params), "DecisionTree", dt_params)
+        
+        nb_params = {"smoothing": 1.0}
+        run_experiment(NaiveBayes(labelCol="label", featuresCol="features", **nb_params), "NaiveBayes", nb_params)
+        
+        # 5. Write all collected metadata to HBase
+        # =========================================
+        print("\n--- Writing model experiment metadata to HBase table 'model_registry' ---")
+        connection = get_hbase_connection()
+        if connection:
+            try:
+                table = connection.table('model_registry')
+                with table.batch() as b:
+                    for metadata in model_metadata_list:
+                        row_key = metadata.pop('row_key')
+                        data_to_write = {k.encode('utf-8'): str(v).encode('utf-8') for k, v in metadata.items()}
+                        b.put(row_key.encode('utf-8'), data_to_write)
+                print("Metadata successfully written to HBase.")
+            finally:
+                connection.close()
+                print("HBase connection closed.")
 
-    # 9. Write metadata to HBase
-    conn = get_hbase_connection()
-    if conn:
-        table = conn.table('model_registry')
-        row_dt = f"task2_dt_{ts}"
-        meta_dt = {
-            'info:task_name': 'Task B - Room Experience Classification',
-            'info:model_name': 'DecisionTree',
-            'info:run_timestamp': ts,
-            'metrics:training_time_seconds': str(round(dt_time,2)),
-            'metrics:evaluation_score': str(round(f1_dt,4)),
-            'metrics:score_type': 'MacroF1',
-            'artifact:model_hdfs_path': dt_path
-        }
-        row_nb = f"task2_nb_{ts}"
-        meta_nb = {
-            'info:task_name': 'Task B - Room Experience Classification',
-            'info:model_name': 'NaiveBayes',
-            'info:run_timestamp': ts,
-            'metrics:training_time_seconds': str(round(nb_time,2)),
-            'metrics:evaluation_score': str(round(f1_nb,4)),
-            'metrics:score_type': 'MacroF1',
-            'artifact:model_hdfs_path': nb_path
-        }
-        with table.batch() as b:
-            b.put(row_dt.encode(), {k.encode(): v.encode() for k,v in meta_dt.items()})
-            b.put(row_nb.encode(), {k.encode(): v.encode() for k,v in meta_nb.items()})
-        conn.close()
-        print("Metadata written to HBase")
+    except Exception as e:
+        print(f"!!! An error occurred during the execution of Task B. !!!\nError details: {e}")
+        
+    finally:
+        # 6. Shutdown
+        # ==============
+        if 'spark' in locals():
+            spark.stop()
+        print("\nTask B: Classification experiment and registration finished.")
 
-    spark.stop()
-    print("=== Task B finished ===")

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}WQD7007GP Workbench{% endblock %}</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+            margin: 0; 
+            background-color: #f0f2f5; 
+            display: flex; 
+            height: 100vh; 
+            overflow: hidden;
+        }
+        .sidebar { 
+            width: 250px; 
+            background-color: #001529; 
+            color: white; 
+            padding-top: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            flex-shrink: 0;
+            box-shadow: 2px 0 6px rgba(0,0,0,0.1);
+        }
+        .sidebar-header h2 { 
+            padding: 0 24px; 
+            font-size: 1.8rem; 
+            color: #fff;
+            margin-bottom: 30px;
+        }
+        .sidebar nav a { 
+            display: flex;
+            align-items: center;
+            padding: 15px 25px; 
+            color: rgba(255, 255, 255, 0.65); 
+            text-decoration: none; 
+            transition: all 0.3s; 
+            border-left: 4px solid transparent; 
+            font-size: 1rem;
+        }
+        .sidebar nav a:hover { 
+            background-color: #1890ff; 
+            color: #fff;
+            border-left-color: #1890ff;
+        }
+        /* --- CORRECTED LOGIC FOR ACTIVE STATE --- */
+        .sidebar nav a.active {
+            background-color: #1890ff;
+            color: #fff;
+            border-left-color: #1890ff;
+        }
+        .main-content { 
+            flex-grow: 1; 
+            padding: 40px; 
+            overflow-y: auto; 
+        }
+        .container { 
+            max-width: 1400px; 
+            margin: 0 auto; 
+            background-color: white; 
+            padding: 2.5rem; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08); 
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2>WQD7007GP</h2>
+        </div>
+        <nav>
+            <!-- We now use request.path for accurate highlighting and removed the prediction link -->
+            <a href="/" class="{{ 'active' if request.path == '/' else '' }}">Task Console</a>
+            <a href="/model-registry" class="{{ 'active' if request.path == '/model-registry' else '' }}">Model Comparison</a>
+        </nav>
+    </div>
+    <div class="main-content">
+        <div class="container">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+</body>
+</html>
+

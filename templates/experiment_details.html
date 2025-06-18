@@ -1,0 +1,73 @@
+{% extends "layout.html" %}
+{% block title %}Experiment Details{% endblock %}
+{% block content %}
+<style>
+    .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+    .card { background-color: #fafafa; border: 1px solid #e8e8e8; border-radius: 8px; padding: 20px; }
+    .card h3 { margin-top: 0; color: #333; border-bottom: 1px solid #e8e8e8; padding-bottom: 10px; }
+    .info-list li { list-style: none; padding: 8px 0; display: flex; justify-content: space-between; }
+    .info-list li span:first-child { font-weight: 500; color: #555; }
+    .info-list li .code { background-color: #e9ecef; padding: 3px 6px; border-radius: 4px; font-family: "SFMono-Regular", Consolas, 'Liberation Mono', Menlo, Courier, monospace; }
+    .chart-container { position: relative; height: 300px; }
+    .bar-chart { display: flex; align-items: flex-end; height: 100%; border-left: 2px solid #ccc; border-bottom: 2px solid #ccc; padding: 10px 0; }
+    .bar { flex: 1; background-color: #1890ff; margin: 0 5%; text-align: center; color: white; position: relative; transition: all 0.3s; }
+    .bar:hover { background-color: #40a9ff; }
+    .bar span { position: absolute; top: -25px; width: 100%; left: 0; font-weight: bold; }
+    .bar .label { position: absolute; bottom: -30px; width: 100%; left: 0; }
+</style>
+<h1>Experiment Details</h1>
+{% if error %}
+    <p class="error">Error: {{ error }}</p>
+{% else %}
+    <div class="details-grid">
+        <div class="card">
+            <h3>Experiment Information</h3>
+            <ul class="info-list">
+                <li><span>Experiment ID:</span> <span class="code">{{ data['row_key'] }}</span></li>
+                <li><span>Task Name:</span> <span>{{ data['info:task_name'] }}</span></li>
+                <li><span>Model Name:</span> <span><b>{{ data['info:model_name'] }}</b></span></li>
+                <li><span>Run Timestamp:</span> <span>{{ data['info:run_timestamp'] }}</span></li>
+                <li><span>Model Path on HDFS:</span> <span class="code">{{ data['artifact:model_hdfs_path'] }}</span></li>
+            </ul>
+        </div>
+        <div class="card">
+            <h3>Performance Metrics</h3>
+            <ul class="info-list">
+                <li><span>Metric Type:</span> <span>{{ data['metrics:score_type'] }}</span></li>
+                <li><span>Evaluation Score:</span> <span><b>{{ data['metrics:evaluation_score'] }}</b></span></li>
+                <li><span>Training Time:</span> <span>{{ data['metrics:training_time_seconds'] }} seconds</span></li>
+            </ul>
+        </div>
+    </div>
+    <div class="card" style="margin-top: 30px;">
+        <h3>Detailed Metrics Visualization</h3>
+        {% if data['details:rich_metrics_json'] %}
+            {% set details = data['details:rich_metrics_json'] | fromjson %}
+            
+            {% if 'cluster_sizes' in details %}
+                <h4>Cluster Sizes</h4>
+                <div class="chart-container">
+                    <div class="bar-chart">
+                        {% for cluster in details.cluster_sizes %}
+                            <div class="bar" style="height: {{ (cluster.count / details.cluster_sizes | map(attribute='count') | max) * 100 }}%;">
+                                <span>{{ cluster.count }}</span>
+                                <div class="label">Cluster {{ cluster.cluster_id }}</div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% elif 'confusion_matrix' in details %}
+                <h4>Confusion Matrix</h4>
+                <!-- You can render the confusion matrix as a table here -->
+                <p>{{ details | tojson(indent=2) }}</p>
+            {% else %}
+                <p>No visualizable detailed metrics found.</p>
+            {% endif %}
+
+        {% else %}
+            <p>No detailed metrics were recorded for this experiment.</p>
+        {% endif %}
+    </div>
+{% endif %}
+{% endblock %}
+
