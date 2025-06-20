@@ -1,279 +1,312 @@
-### WQD7007 大数据项目：TripAdvisor酒店评论分析平台 (完整版指南)
+## WQD7007 Big Data Project: TripAdvisor Hotel Review Analysis Platform (Complete Guide)
 
-#### **项目概览**
+### Project Overview
 
-本项目旨在利用大数据技术栈，对TripAdvisor酒店评论数据集进行深度分析。我们所有团队成员将在一个**共享的、由组长统一配置和维护的中央服务器（虚拟机）**上进行开发。
+This project aims to leverage a big data technology stack for in-depth analysis of the TripAdvisor hotel review dataset. All our team members will develop on a **shared central server (virtual machine) uniformly configured and maintained by the team leader.**
 
-本项目将重点应用 **Apache Spark MLlib** 库，探索和解决四种机器学习问题：聚类、分类、情感分析和异常检测。所有分析任务、模型保存、以及最终成果的注册，都将遵循一套标准化的流程。
+This project will focus on applying the **Apache Spark MLlib** library to explore and solve four machine learning problems: clustering, classification, sentiment analysis, and anomaly detection. All analysis tasks, model saving, and final result registration will follow a standardized process.
 
-### **第一步：服务器初始环境配置 (由组长完成，供团队参考)**
+------
 
-本阶段的所有操作都已由组长在中央服务器上一次性完成，团队成员**无需操作**，但理解这些配置有助于更好地进行开发。
+### Step One: Server Initial Environment Configuration (Completed by Team Leader, For Team Reference)
 
-- **1.1 核心组件安装**:
-  - **Java**: `openjdk-8-jdk`
-  - **Hadoop**: `2.7.7`
-  - **Spark**: `2.4.8` (for Hadoop 2.7)
-  - **Hive**: `1.2.2`
-  - **HBase**: `1.4.13`
-  - **Scala**: `2.11.12`
-  - 所有组件均安装在 `/usr/local/` 目录下，并设置了相应的环境变量 (`$HADOOP_HOME`, `$SPARK_HOME` 等)。
-- **1.2 Python环境校准**:
-  - 使用`pyenv`工具安装了**Python 3.7.17**，以确保与Spark 2.4.8的完全兼容。
-  - 创建了一个名为`pyspark-3.7-env`的专用虚拟环境。
-- **1.3 核心服务配置 (关键)**:
-  - **Hadoop伪分布式配置**: 已修改`core-site.xml`, `hdfs-site.xml`等文件，使Hadoop能在单机上以分布式模式运行。
-  - **Hive Metastore配置**: 已在`$HIVE_HOME/conf/`目录下创建`hive-site.xml`，并配置`hive.metastore.uris`为`thrift://localhost:9083`，使其作为一个独立服务运行。
-  - **HBase on HDFS配置**: 已在`$HBASE_HOME/conf/`目录下修改`hbase-site.xml`，将`hbase.rootdir`指向`hdfs://localhost:9000/hbase`，确保HBase数据存储在HDFS上。
-  - **Spark连接Hive配置**: 已将`hive-site.xml`文件从Hive配置目录复制到Spark的配置目录，让Spark能自动找到Hive的元数据。
-- **1.4 后台服务启动**:
-  - 所有必需的后台服务已通过`nohup`命令在后台永久运行，团队成员登录后无需手动启动。
-    - Hadoop HDFS (`NameNode`, `DataNode`)
-    - HBase Master & RegionServer (`HMaster`, `HRegionServer`)
-    - Hive Metastore (`RunJar` 进程)
-    - HBase Thrift Server (`ThriftServer` 进程)
+All operations in this stage have been completed once by the team leader on the central server. Team members do not need to perform these operations, but understanding these configurations will aid in better development.
 
-### **第二步：数据准备工作 (由组长完成，供团队参考)**
+#### 1.1 Core Component Installation:
 
-- **2.1 数据上传至HDFS**:
-  - 原始JSON数据集已上传至HDFS的`/user/fizz/project_data/`目录。
-- **2.2 在Hive中创建数据表**:
-  - 组长已登录Hive，并执行`ADD JAR`命令加载了处理JSON所需的`hive-hcatalog-core-*.jar`。
-  - 执行了SQL语句，成功创建了名为`reviews`的外部表。
-- **2.3 在HBase中创建模型注册表**:
-  - 组长已登录HBase Shell，并执行了`create 'model_registry', 'info', 'metrics', 'artifact'`命令，成功创建了用于存储模型实验结果的表。
+- **Java:** `openjdk-8-jdk`
+- **Hadoop:** `2.7.7`
+- **Spark:** `2.4.8` (for Hadoop 2.7)
+- **Hive:** `1.2.2`
+- **HBase:** `1.4.13`
+- **Scala:** `2.11.12`
 
-**一句话总结：服务器已经是一个准备就绪的、所有数据和表都已备好的“大数据实验室”，大家可以随时登录开始做实验。**
+All components are installed under the `/usr/local/` directory, with corresponding environment variables (`$HADOOP_HOME`, `$SPARK_HOME`, etc.) set.
 
-### **第三步：远程连接与团队协作 (SSH & Git) - (所有成员必读)**
+#### 1.2 Python Environment Calibration:
 
-这是**每一位团队成员都需要掌握的核心工作流程**。我们通过SSH安全地连接到服务器，然后使用专业化的Git流程进行代码的版本控制与同步。
+- `Python 3.7.17` was installed using the `pyenv` tool to ensure full compatibility with Spark 2.4.8.
+- A dedicated virtual environment named `pyspark-3.7-env` was created.
 
-#### **3.1 远程连接服务器 (基于ZeroTier)**
+#### 1.3 Core Service Configuration (Crucial):
 
-本指南将引导您如何通过ZeroTier安全地远程连接到我们的开发服务器。
+- **Hadoop Pseudo-Distributed Configuration:** `core-site.xml`, `hdfs-site.xml`, and other files have been modified to allow Hadoop to run in a distributed mode on a single machine.
+- **Hive Metastore Configuration:** `hive-site.xml` has been created in the `$HIVE_HOME/conf/` directory, and `hive.metastore.uris` has been configured to `thrift://localhost:9083`, allowing it to run as an independent service.
+- **HBase on HDFS Configuration:** `hbase-site.xml` has been modified in the `$HBASE_HOME/conf/` directory, pointing `hbase.rootdir` to `hdfs://localhost:9000/hbase`, ensuring HBase data is stored on HDFS.
+- **Spark Connection to Hive Configuration:** The `hive-site.xml` file has been copied from the Hive configuration directory to Spark's configuration directory, allowing Spark to automatically find Hive's metadata.
 
-1. **获取网络ID**: 在开始前，请注意16位的“网络ID (Network ID)”：`17d709436c084884`
+#### 1.4 Background Service Startup:
 
-2. **在您的电脑上安装ZeroTier客户端**:
+All required background services have been permanently run in the background using the `nohup` command. Team members do not need to manually start them after logging in.
 
-   - 请打开浏览器，访问ZeroTier官方下载页面：https://www.zerotier.com/download/
-   - 根据您的操作系统（Windows/Mac/Linux），下载并安装对应的版本。
+- Hadoop HDFS (`NameNode`, `DataNode`)
+- HBase Master & RegionServer (`HMaster`, `HRegionServer`)
+- Hive Metastore (`RunJar` process)
+- HBase Thrift Server (`ThriftServer` process)
 
-3. **加入指定的虚拟网络**:
+------
 
-   - 安装完成后，找到ZeroTier的“Join New Network...”选项。
-   - 在弹出的窗口中输入上面获取的16位网络ID，然后点击“Join”。
+### Step Two: Data Preparation (Completed by Team Leader, For Team Reference)
 
-4. **【非常重要】通知管理员授权**:
+#### 2.1 Data Upload to HDFS:
 
-   - 完成上一步后，请**立即通知管理员（Runcheng Wang）**，他需要在管理后台授权您的设备加入网络。否则，您的连接将无法成功。
+The raw JSON dataset has been uploaded to the `/user/fizz/project_data/` directory in HDFS.
 
-5. **使用SSH正式登录**:
+#### 2.2 Create Data Tables in Hive:
 
-   - 等待管理员告知您“已授权”后，打开您的终端（或CMD/PowerShell）。
+The team leader has logged into Hive and executed the `ADD JAR` command to load the `hive-hcatalog-core-*.jar` required for JSON processing. SQL statements were executed to successfully create an external table named `reviews`.
 
-   - 输入以下命令并按回车。系统会提示您输入`fizz`用户的密码。
+#### 2.3 Create Model Registry Table in HBase:
 
-     ```
-     ssh fizz@10.147.17.31
-     ```
+The team leader has logged into HBase Shell and executed the `create 'model_registry', 'info', 'metrics', 'artifact'` command to successfully create the table for storing model experiment results.
 
-#### **3.2 Git团队协作流程 (重点！)**
+**In summary:** The server is now a ready-to-use "big data lab" with all data and tables prepared. Everyone can log in and start experimenting at any time.
 
-成功登录服务器后，我们将遵循一套包含**身份配置、分支管理和合并请求 (Pull Request)** 的专业Git流程。
+------
 
+### Step Three: Remote Connection and Team Collaboration (SSH & Git) - (Mandatory for All Members)
 
-##### **3.2.1 克隆你自己的工作区 (每个成员仅需一次)**
+This is the core workflow that every team member needs to master. We will securely connect to the server via SSH and then use a professional Git process for code version control and synchronization.
 
-这是建立你个人开发环境的**第一步也是最关键的一步**。
+#### 3.1 Remote Server Connection (Based on ZeroTier)
 
-1. **创建并进入总工作区**:
+This guide will walk you through securely connecting to our development server via ZeroTier.
 
-   ```
-   mkdir -p /home/fizz/WQD7007GP
-   cd /home/fizz/WQD7007GP
-   ```
+**Get the Network ID:** Before starting, please note the 16-digit "Network ID": `17d709436c084884`
 
-2. **克隆中央仓库到你的个人文件夹**: 使用`git clone`命令。这个命令会自动为你创建一个文件夹，下载所有代码，并设置好与远程仓库的连接。
+**Install the ZeroTier Client on your computer:**
 
-   ```
-   # 将<你的文件夹名>替换为你自己的名字或小组名，例如 "Runcheng" 或 "GroupB"
-   git clone https://github.com/Fizz-Wang/WQD7007GP.git <你的文件夹名>
-   ```
+- Open your browser and visit the ZeroTier official download page: `https://www.zerotier.com/download/`
+- Download and install the corresponding version based on your operating system (Windows/Mac/Linux).
 
-   **示例**:
+**Join the specified virtual network:**
 
-   ```
-   git clone https://github.com/Fizz-Wang/WQD7007GP.git Runcheng
-   ```
+- After installation, find the "Join New Network..." option in ZeroTier.
+- Enter the 16-digit Network ID obtained above in the pop-up window, then click "Join".
 
-##### **3.2.2 首次Git配置 (在你的个人工作区内完成)**
+**【Very Important】Notify the administrator for authorization:**
 
-1. **进入你刚刚克隆好的工作区**:
+- After completing the previous step, please immediately notify the administrator (Runcheng Wang). They need to authorize your device to join the network from the administration backend. Otherwise, your connection will not be successful.
 
-   ```
-   cd <你的文件夹名> 
-   # 例如: cd Runcheng
-   ```
+**Formally log in using SSH:**
 
-2. **设置你的Git用户名和邮箱** (请确保这与你自己的GitHub账户一致):
+- After the administrator informs you "Authorized", open your terminal (or CMD/PowerShell).
 
-   ```
-   git config user.name "Your Name"
-   git config user.email "your.email@example.com"
-   ```
+Enter the following command and press Enter. You will be prompted to enter the password for the fizz user.
 
-   这个配置是**针对当前仓库**的，不会影响到其他人的工作区。
+ssh fizz@10.147.17.31
 
-##### **3.2.2 GitHub推送权限设置 (由组长和组员配合完成)**
+#### 3.2 Git Team Collaboration Workflow (Key!)
 
-为了让所有成员都能向中央仓库推送代码，我们需要进行权限设置。
+After successfully logging into the server, we will follow a professional Git process that includes identity configuration, branch management, and Pull Requests.
 
-1. **组长操作 (在GitHub网站上)**:
-   - 进入项目仓库页面 `https://github.com/Fizz-Wang/WQD7007GP`。
-   - 点击 `Settings` -> `Collaborators and teams` -> `Add people`。
-   - 通过GitHub用户名或邮箱，邀请每一位团队成员成为“协作者 (Collaborator)”。
-2. **组员操作**:
-   - 检查你的邮箱，接受来自GitHub的邀请。
-3. **组员操作 (在自己的GitHub网站上)**:
-   - 为了安全，我们不直接使用密码，而是使用**个人访问令牌 (Personal Access Token - PAT)**。
-   - 访问你的GitHub `Settings` -> `Developer settings` -> `Personal access tokens` -> `Tokens (classic)`。
-   - 点击 `Generate new token`，给它一个描述（如 "WQD7007 Project Token"），勾选 `repo` 权限范围，然后生成令牌。
-   - **立即复制并保存好这个令牌**，它只会出现一次！
+#### 3.2.1 Clone your own workspace (Each member needs to do this only once)
 
-##### **3.2.3 日常开发循环 (Branch & Pull Request模型)**
+This is the first and most critical step in setting up your personal development environment.
 
-这是我们日常工作的核心，它确保了`main`分支的稳定和代码的可审查性。
+**Create and enter the main workspace:**
 
-1. **进入目录**: `cd /home/fizz/WQD7007GP/<你的文件夹名>`
+Bash
 
-2. **激活环境**: `pyenv local pyspark-3.7-env` (通常进入目录会自动激活)
+```
+mkdir -p /home/fizz/WQD7007GP
+cd /home/fizz/WQD7007GP
+```
 
-3. **同步主分支**: 在开始新功能开发前，务必确保你的本地`main`分支是最新版本。
+**Clone the central repository into your personal folder:** Use the `git clone` command. This command will automatically create a folder for you, download all the code, and set up the connection to the remote repository.
 
-   ```
-   git checkout main
-   git pull origin main
-   ```
+Bash
 
-4. **创建新分支**: 为你的新任务创建一个独立的分支。分支命名要清晰，例如 `feature/task-a-kmeans` 或 `fix/hbase-connector`。
+```
+# Replace <your_folder_name> with your own name or group name, e.g., "Runcheng" or "GroupB"
+git clone https://github.com/Fizz-Wang/WQD7007GP.git <your_folder_name>
+```
 
-   ```
-   git checkout -b <你的新分支名>
-   ```
+Example:
 
-5. **编写与提交代码**: 在这个新分支上，使用`nano`等编辑器进行开发。完成后，将更改提交到**你自己的这个分支**上。
+git clone https://github.com/Fizz-Wang/WQD7007GP.git Runcheng
 
-   ```
-   git add .
-   git commit -m "feat(TaskA): 完成K-Means模型训练与评估"
-   ```
+#### 3.2.2 First-time Git Configuration (Complete within your personal workspace)
 
-6. **推送分支到GitHub**: 将你的本地分支推送到远程仓库。
+Enter your newly cloned workspace:
 
-   ```
-   git push origin <你的新分支名>
-   ```
+cd <your_folder_name>
 
-   当你第一次推送时，Git会要求你输入GitHub的**用户名**和**密码**。请在密码处**粘贴你生成的个人访问令牌 (PAT)**。
+\# e.g.: cd Runcheng
 
-7. **创建合并请求 (Pull Request)**:
+**Set your Git username and email** (Please ensure this matches your GitHub account):
 
-   - 打开你的浏览器，进入项目GitHub页面。你应该会看到一个黄色的提示条，提示你刚刚推送了一个新分支。
-   - 点击`Compare & pull request`按钮。
-   - 填写标题和描述，说明你完成了什么功能，然后点击`Create pull request`。
+Bash
 
-8. **代码审查与合并 (由组长完成)**:
+```
+git config user.name "Your Name"
+git config user.email "your.email@example.com"
+```
 
-   - 组长（或其他指定成员）会审查你提交的代码。
-   - 确认无误后，组长会在GitHub上点击`Merge pull request`按钮，将你的代码安全地合并到`main`分支中。
+This configuration is specific to the current repository and will not affect other people's workspaces.
 
-### **第四步：核心分析与成果标准化**
+#### 3.2.3 GitHub Push Permissions Setup (Completed by Team Leader and Members Cooperatively)
 
-为了保证团队协作的规范性，我们的项目采用了一个统一的代码结构。请在你的个人工作区中查看，并理解每个部分的作用。
+To allow all members to push code to the central repository, we need to set up permissions.
 
-- **项目代码结构解析**:
+**Team Leader's Operation (on GitHub website):**
 
-  - `tasks/` 目录: 这是我们所有分析任务的核心代码存放区。每个小组都在这里编写自己的脚本，例如`task_a_clustering.py`, `task_b_classification.py`等。
-  - `utils/` 目录: 存放所有小组都可以共用的“工具”模块。比如`spark_session.py`（用来创建Spark会话）和`hbase_connector.py`（用来连接HBase），这能避免我们重复造轮子。
-  - `main.py` 文件: 这是整个项目的“总调度中心”。它会根据我们输入的任务编号，去调用`tasks/`目录中对应的任务脚本。
-  - `run_spark.sh` 文件: 这是我们项目的**官方“点火”脚本**。由于直接运行`spark-submit`需要很多复杂的配置，我们把所有配置都封装在了这个脚本里。**所有人都必须通过这个脚本来运行任务**。
+- Go to the project repository page: `https://github.com/Fizz-Wang/WQD7007GP`.
+- Click **Settings** -> **Collaborators and teams** -> **Add people**.
+- Invite each team member as a "Collaborator" via their GitHub username or email.
 
-- **如何运行你的分析任务**:
+**Team Member's Operation:**
 
-  1. 确保你当前在你的个人工作区根目录下（例如`/home/fizz/WQD7007GP/Runcheng`）。
+- Check your email and accept the invitation from GitHub.
 
-  2. 赋予`run_spark.sh`执行权限（每个成员只需要做一次）：
+Team Member's Operation (on their own GitHub website):
 
-     ```
-     chmod +x run_spark.sh
-     ```
+For security, we will use a Personal Access Token (PAT) instead of directly using a password.
 
-  3. 根据`main.py`中定义的任务列表，输入对应的编号来运行你的任务。
+- Visit your GitHub **Settings** -> **Developer settings** -> **Personal access tokens** -> **Tokens (classic)**.
+- Click **Generate new token**, give it a description (e.g., "WQD7007 Project Token"), check the **repo** scope, and then generate the token.
+- **Immediately copy and save this token; it will only appear once!**
 
-     ```
-     # 语法: ./run_spark.sh <你的任务编号>
-     
-     # 例如，A组同学运行自己的聚类任务：
-     ./run_spark.sh 1
-     
-     # B组同学运行自己的分类任务：
-     ./run_spark.sh 2
-     ```
+#### 3.2.4 Daily Development Cycle (Branch & Pull Request Model)
 
-  这个脚本会自动检查并启动后台服务，然后用正确的配置来提交你的Spark作业。
+This is the core of our daily work, ensuring the stability of the `main` branch and the reviewability of code.
 
-#### **通用代码结构模板 (适用于所有小组)**
+**Enter the directory:** `cd /home/fizz/WQD7007GP/<your_folder_name>`
 
-为了帮助所有小组理解并遵循标准化的流程，我们提供一个通用的脚本模板。**每个小组都可以复制这个结构，并替换其中标记为`!!!`的、与自己任务相关的核心逻辑部分**。
+**Activate environment:** `pyenv local pyspark-3.7-env` (usually, entering the directory will automatically activate it)
+
+**Synchronize main branch:** Before starting new feature development, always ensure your local `main` branch is up-to-date.
+
+Bash
+
+```
+git checkout main
+git pull origin main
+```
+
+Create a new branch: Create an independent branch for your new task. Branch names should be clear, for example, feature/task-a-kmeans or fix/hbase-connector.
+
+git checkout -b <your_new_branch_name>
+
+**Write and commit code:** Develop on this new branch using editors like `nano`. After completion, commit the changes to your own branch.
+
+Bash
+
+```
+git add .
+git commit -m "feat(TaskA): Complete K-Means model training and evaluation"
+```
+
+Push branch to GitHub: Push your local branch to the remote repository.
+
+git push origin <your_new_branch_name>
+
+The first time you push, Git will ask for your GitHub username and password. Please paste your generated Personal Access Token (PAT) in the password field.
+
+**Create a Pull Request:**
+
+- Open your browser and go to the project's GitHub page. You should see a yellow banner prompting you that you just pushed a new branch.
+- Click the **Compare & pull request** button.
+- Fill in the title and description, explaining what functionality you have completed, then click **Create pull request**.
+
+**Code Review and Merge (Completed by Team Leader):**
+
+- The team leader (or other designated members) will review your submitted code.
+- Once confirmed, the team leader will click the **Merge pull request** button on GitHub to safely merge your code into the `main` branch.
+
+------
+
+### Step Four: Core Analysis and Output Standardization
+
+To ensure standardized team collaboration, our project adopts a unified code structure. Please examine it in your personal workspace and understand the role of each part.
+
+**Project Code Structure Analysis:**
+
+- `tasks/` directory: This is where the core code for all our analysis tasks is stored. Each group writes their scripts here, such as `task_a_clustering.py`, `task_b_classification.py`, etc.
+- `utils/` directory: Stores "utility" modules that all groups can share. For example, `spark_session.py` (used to create Spark sessions) and `hbase_connector.py` (used to connect to HBase), which prevents us from reinventing the wheel.
+- `main.py` file: This is the project's "central dispatcher." It calls the corresponding task scripts in the `tasks/` directory based on the task number we input.
+- `run_spark.sh` file: This is our project's official "ignition" script. Since directly running `spark-submit` requires many complex configurations, we have encapsulated all configurations in this script. Everyone must run tasks through this script.
+
+**How to run your analysis tasks:**
+
+- Ensure you are currently in the root of your personal workspace (e.g., `/home/fizz/WQD7007GP/Runcheng`).
+
+- Grant execute permissions to `run_spark.sh` (each member only needs to do this once): `chmod +x run_spark.sh`
+
+- Based on the task list defined in 
+
+  ```
+  main.py
+  ```
+
+  , enter the corresponding number to run your task.
+
+  Bash
+
+  ```
+  # Syntax: ./run_spark.sh <your_task_number>
+  
+  # For example, Group A members running their clustering task:
+  ./run_spark.sh 1
+  
+  # Group B members running their classification task:
+  ./run_spark.sh 2
+  ```
+
+  This script will automatically check and start background services, then submit your Spark job with the correct configuration.
+
+**Generic Code Structure Template (Applicable to all groups)**
+
+To help all groups understand and follow the standardized process, we provide a generic script template. Each group can copy this structure and replace the parts marked `!!!` with their task-specific core logic.
+
+Python
 
 ```
 # tasks/task_x_template.py
 
-# 导入所有必要的通用库
+# Import all necessary generic libraries
 import time
 from datetime import datetime
 
 # =====================================================================
-# !!! 导入您任务所需的特定库 !!!
+# !!! Import specific libraries required for your task !!!
 # =====================================================================
-# ... (例如: from pyspark.ml.clustering import KMeans) ...
+# ... (e.g.: from pyspark.ml.clustering import KMeans) ...
 
 from pyspark.ml import Pipeline
 from utils.spark_session import get_spark_session
 from utils.hbase_connector import get_hbase_connection
 
-def run_task_x(): # <-- 请将'x'替换成您的小组代号
-    """一个标准化的任务执行函数，遵循五个核心步骤。"""
+def run_task_x(): # <-- Please replace 'x' with your group's identifier
+    """A standardized task execution function, following five core steps."""
     
-    # 1. 初始化
+    # 1. Initialization
     spark = get_spark_session("Task X - Your Task Description")
     model_metadata_list = []
 
     try:
-        # 2. 数据加载与特征工程
+        # 2. Data Loading and Feature Engineering
         raw_df = spark.sql("SELECT * FROM reviews")
-        # !!! 在这里编写您小组专属的特征工程代码 !!!
+        # !!! Write your group's exclusive feature engineering code here !!!
         
-        # 3. 模型训练与评估
-        # !!! 在这里定义您小组要使用的模型和评估器 !!!
+        # 3. Model Training and Evaluation
+        # !!! Define the model and evaluator your group will use here !!!
         start_time = time.time()
-        # ... 训练与评估 ...
+        # ... training and evaluation ...
         training_time = time.time() - start_time
-        evaluation_score = 0.0 # <-- 替换为真实的评估分数
-        metric_name = "Your_Metric_Name" # <-- 替换为真实的评估指标名
+        evaluation_score = 0.0 # <-- Replace with actual evaluation score
+        metric_name = "Your_Metric_Name" # <-- Replace with actual evaluation metric name
 
-        # 4. 模型与元数据持久化 (核心)
+        # 4. Model and Metadata Persistence (Core)
         timestamp_str = datetime.now().strftime("%Y%m%d%H%M%S")
-        model_name = "Your_Model_Name" # <-- 替换为您使用的模型名称
+        model_name = "Your_Model_Name" # <-- Replace with the name of the model you used
         model_path = f"hdfs://localhost:9000/user/fizz/models/{model_name.lower()}_{timestamp_str}"
         # trained_model.save(model_path)
 
-        # !!! 准备结构化的元数据字典 (所有小组都必须遵循这个结构) !!!
+        # !!! Prepare structured metadata dictionary (all groups must follow this structure) !!!
         model_metadata = {
-            'row_key': f'task_x_{model_name.lower()}_{timestamp_str}', # <-- 修改任务代号
-            'info:task_name': 'Task X - Your Task Description', # <-- 修改任务描述
+            'row_key': f'task_x_{model_name.lower()}_{timestamp_str}', # <-- Modify task identifier
+            'info:task_name': 'Task X - Your Task Description', # <-- Modify task description
             'info:model_name': model_name,
             'info:run_timestamp': timestamp_str,
             'metrics:training_time_seconds': str(round(training_time, 2)),
@@ -283,7 +316,7 @@ def run_task_x(): # <-- 请将'x'替换成您的小组代号
         }
         model_metadata_list.append(model_metadata)
 
-        # 将元数据写入HBase
+        # Write metadata to HBase
         connection = get_hbase_connection()
         if connection:
             try:
@@ -296,34 +329,44 @@ def run_task_x(): # <-- 请将'x'替换成您的小组代号
             finally:
                 connection.close()
     finally:
-        # 5. 结束
+        # 5. Finalization
         if 'spark' in locals():
             spark.stop()
 ```
 
-### **第五步：成果检验 (Verifying Results)**
+------
 
-在您运行完 `./run_spark.sh {你的数字}`（./run_spark.sh 1） 脚本后，您需要检查两处地方，以确认您的成果已成功保存。
+### Step Five: Verifying Results
 
-#### **5.1 查看HBase中的模型元数据**
+After running the `./run_spark.sh {your_number}` (e.g., `./run_spark.sh 1`) script, you need to check two locations to confirm your results have been successfully saved.
 
-1. **启动HBase Shell**: `hbase shell`
-2. **扫描全表内容**: `scan 'model_registry'`
-   - 您应该能看到刚刚运行任务时生成的、包含模型名称、评估分数、训练时长等信息的“实验记录”。
+#### 5.1 View Model Metadata in HBase
 
-#### **5.2 查看HDFS中保存的模型**
+Start HBase Shell: hbase shell
 
-1. **退出HBase Shell** (输入`exit`并回车)。
-2. **列出HDFS中的`models`目录**: `hdfs dfs -ls /user/fizz/models`
-   - 您应该能看到一个以您的模型名和时间戳命名的**新目录**，这代表模型文件已成功保存。
+Scan full table content: scan 'model_registry'
 
-### **第六步：成果展示 (Flask)**
+You should see the "experiment records" generated from your recent task run, containing information such as model name, evaluation score, training duration, etc.
 
-所有分析任务完成后，`model_registry`表就成了我们成果的“排行榜”。
+#### 5.2 View Saved Models in HDFS
 
-- **后端逻辑**: Flask应用将直接连接到HBase，查询`model_registry`表。
-- **功能展示**:
-  1. **模型排行榜**: 在一个页面上，以表格形式展示所有实验记录，可以根据“评估分数”进行排序，直观地对比所有模型在所有任务上的表现。
-  2. **实时预测接口**: 提供一个API，接收新的酒店评论数据。后端根据请求，从HBase找到表现最好的模型路径，用`PipelineModel.load()`加载HDFS上的模型，进行预测，并将结果返回。
+Exit HBase Shell (type exit and press Enter).
 
-这个最终的应用将作为我们整个项目成果的集中体现，将复杂的数据分析流程，转化为直观、有商业价值的信息。
+List the models directory in HDFS: hdfs dfs -ls /user/fizz/models
+
+You should see a new directory named with your model name and timestamp, indicating that the model file has been successfully saved.
+
+------
+
+### Step Six: Results Display (Flask)
+
+Once all analysis tasks are complete, the `model_registry` table becomes our results "leaderboard."
+
+**Backend Logic:** The Flask application will connect directly to HBase and query the `model_registry` table.
+
+**Functionality Display:**
+
+- **Model Leaderboard:** On one page, display all experiment records in a table format, sortable by "evaluation score," providing an intuitive comparison of all models across all tasks.
+- **Real-time Prediction Interface:** Provide an API that receives new hotel review data. The backend will, based on the request, find the best-performing model path from HBase, load the model from HDFS using `PipelineModel.load()`, perform a prediction, and return the result.
+
+This final application will serve as the centralized showcase for our entire project's achievements, transforming complex data analysis processes into intuitive, commercially valuable information.
